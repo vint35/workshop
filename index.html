@@ -141,7 +141,10 @@
         </div>
         <div class="form-group">
             <label>Место хранения:</label>
-            <input type="text" id="location" placeholder="Например: Стеллаж №2, полка 3">
+            <select id="locationSelect" onchange="handleLocationChange(this)">
+                <!-- Заполняется автоматически из списка мест -->
+            </select>
+            <input type="text" id="customLocation" placeholder="Введите новое место хранения..." style="margin-top: 8px; display: none;">
         </div>
         <div class="form-group">
             <label>Количество / Остаток:</label>
@@ -162,19 +165,71 @@
 </div>
 
 <script>
+    // Базовые места хранения по умолчанию
+    const DEFAULT_LOCATIONS = [
+        "Кейс Бош / кладовка",
+        "Стеллаж №1",
+        "Стеллаж №2",
+        "Верстак",
+        "Синий ящик с крепежом",
+        "Гараж / Полка"
+    ];
+
     function toggleForm() {
-        document.getElementById('itemForm').classList.toggle('active');
+        const form = document.getElementById('itemForm');
+        form.classList.toggle('active');
+        if (form.classList.contains('active')) {
+            updateLocationsDropdown();
+        }
     }
 
     function getItems() {
         return JSON.parse(localStorage.getItem('workshop_local_db') || '[]');
     }
 
+    // Собираем все уникальные места из базы + стандартные
+    function getAllLocations() {
+        const items = getItems();
+        const locationsSet = new Set(DEFAULT_LOCATIONS);
+        items.forEach(item => {
+            if (item.location) locationsSet.add(item.location);
+        });
+        return Array.from(locationsSet);
+    }
+
+    function updateLocationsDropdown() {
+        const select = document.getElementById('locationSelect');
+        const locations = getAllLocations();
+        
+        select.innerHTML = locations.map(loc => `<option value="${loc}">${loc}</option>`).join('') + 
+                           `<option value="NEW_LOCATION">➕ Добавить новое место...</option>`;
+        
+        document.getElementById('customLocation').style.display = 'none';
+        document.getElementById('customLocation').value = '';
+    }
+
+    function handleLocationChange(select) {
+        const customInput = document.getElementById('customLocation');
+        if (select.value === 'NEW_LOCATION') {
+            customInput.style.display = 'block';
+            customInput.focus();
+            customInput.required = true;
+        } else {
+            customInput.style.display = 'none';
+            customInput.required = false;
+        }
+    }
+
     async function saveItem(e) {
         e.preventDefault();
         const title = document.getElementById('title').value;
         const category = document.getElementById('category').value;
-        const location = document.getElementById('location').value;
+        
+        let location = document.getElementById('locationSelect').value;
+        if (location === 'NEW_LOCATION') {
+            location = document.getElementById('customLocation').value.trim();
+        }
+
         const quantity = document.getElementById('quantity').value;
         const comment = document.getElementById('comment').value;
         const photoInput = document.getElementById('photo');
@@ -202,6 +257,7 @@
         items = items.filter(item => item.id !== id);
         localStorage.setItem('workshop_local_db', JSON.stringify(items));
         renderItems();
+        updateLocationsDropdown();
     }
 
     function exportDB() {
@@ -220,9 +276,10 @@
         const reader = new FileReader();
         reader.onload = function(event) {
             try {
-                JSON.parse(event.target.result); // Проверка валидности JSON
+                JSON.parse(event.target.result);
                 localStorage.setItem('workshop_local_db', event.target.result);
                 renderItems();
+                updateLocationsDropdown();
                 alert('База данных успешно импортирована!');
             } catch (err) {
                 alert('Ошибка: поврежденный файл бэкапа.');
@@ -274,6 +331,7 @@
     }
 
     renderItems();
+    updateLocationsDropdown();
 </script>
 
 </body>
