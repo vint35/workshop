@@ -46,7 +46,7 @@
         .btn:hover { background: var(--primary-hover); }
         .btn-secondary { background: #475569; }
         .btn-secondary:hover { background: #334155; }
-        .btn-danger { background: var(--danger); padding: 6px 12px; font-size: 14px; margin-top: 10px; flex: none; }
+        .btn-danger { background: var(--danger); padding: 6px 12px; font-size: 14px; flex: none; }
         
         .search-box {
             width: 100%;
@@ -59,7 +59,7 @@
             background: white;
         }
 
-        form {
+        form, .modal-panel {
             background: var(--card-bg);
             padding: 20px;
             border-radius: 12px;
@@ -67,7 +67,7 @@
             margin-bottom: 25px;
             display: none;
         }
-        form.active { display: block; }
+        form.active, .modal-panel.active { display: block; }
         .form-group { margin-bottom: 15px; }
         label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
         input, select, textarea {
@@ -80,6 +80,17 @@
             background: white;
         }
         
+        .location-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f1f5f9;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+
         .grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
         @media(min-width: 500px) { .grid { grid-template-columns: repeat(2, 1fr); } }
         
@@ -116,10 +127,24 @@
     <h1>🧰 Учет Инструмента</h1>
     
     <div class="actions-bar">
-        <button class="btn" onclick="toggleForm()">➕ Добавить позицию</button>
-        <button class="btn btn-secondary" onclick="exportDB()">💾 Скачать базу</button>
-        <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">📂 Загрузить базу</button>
+        <button class="btn" onclick="toggleForm()">➕ Добавить</button>
+        <button class="btn btn-secondary" onclick="toggleLocationsManager()">⚙️ Места</button>
+        <button class="btn btn-secondary" onclick="exportDB()">💾 Скачать</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">📂 Загрузить</button>
         <input type="file" id="importFile" accept=".json" onchange="importDB(event)">
+    </div>
+
+    <!-- Панель управления местами хранения -->
+    <div id="locationsPanel" class="modal-panel">
+        <h3 style="margin-top: 0; color: #0f172a;">Управление местами хранения</h3>
+        <div class="form-group">
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="newLocationName" placeholder="Новое место хранения...">
+                <button class="btn" style="flex: none; padding: 10px 15px;" onclick="addNewLocation()">Добавить</button>
+            </div>
+        </div>
+        <div id="locationsListContainer" style="max-height: 200px; overflow-y: auto; margin-bottom: 15px;"></div>
+        <button class="btn btn-secondary" style="width: 100%;" onclick="toggleLocationsManager()">Закрыть</button>
     </div>
 
     <input type="text" id="searchInput" class="search-box" placeholder="🔍 Быстрый поиск по названию или месту..." oninput="renderItems()">
@@ -142,7 +167,7 @@
         <div class="form-group">
             <label>Место хранения:</label>
             <select id="locationSelect" onchange="handleLocationChange(this)">
-                <!-- Заполняется автоматически из списка мест -->
+                <!-- Заполняется динамически -->
             </select>
             <input type="text" id="customLocation" placeholder="Введите новое место хранения..." style="margin-top: 8px; display: none;">
         </div>
@@ -165,7 +190,6 @@
 </div>
 
 <script>
-    // Базовые места хранения по умолчанию
     const DEFAULT_LOCATIONS = [
         "Кейс Бош / кладовка",
         "Стеллаж №1",
@@ -175,11 +199,35 @@
         "Гараж / Полка"
     ];
 
+    function getLocations() {
+        const saved = localStorage.getItem('workshop_custom_locations');
+        if (saved) {
+            return JSON.parse(saved);
+        }
+        return DEFAULT_LOCATIONS;
+    }
+
+    function saveLocations(locations) {
+        localStorage.setItem('workshop_custom_locations', JSON.stringify(locations));
+    }
+
     function toggleForm() {
         const form = document.getElementById('itemForm');
+        const panel = document.getElementById('locationsPanel');
+        panel.classList.remove('active');
         form.classList.toggle('active');
         if (form.classList.contains('active')) {
             updateLocationsDropdown();
+        }
+    }
+
+    function toggleLocationsManager() {
+        const panel = document.getElementById('locationsPanel');
+        const form = document.getElementById('itemForm');
+        form.classList.remove('active');
+        panel.classList.toggle('active');
+        if (panel.classList.contains('active')) {
+            renderLocationsManagerList();
         }
     }
 
@@ -187,19 +235,9 @@
         return JSON.parse(localStorage.getItem('workshop_local_db') || '[]');
     }
 
-    // Собираем все уникальные места из базы + стандартные
-    function getAllLocations() {
-        const items = getItems();
-        const locationsSet = new Set(DEFAULT_LOCATIONS);
-        items.forEach(item => {
-            if (item.location) locationsSet.add(item.location);
-        });
-        return Array.from(locationsSet);
-    }
-
     function updateLocationsDropdown() {
         const select = document.getElementById('locationSelect');
-        const locations = getAllLocations();
+        const locations = getLocations();
         
         select.innerHTML = locations.map(loc => `<option value="${loc}">${loc}</option>`).join('') + 
                            `<option value="NEW_LOCATION">➕ Добавить новое место...</option>`;
@@ -208,131 +246,5 @@
         document.getElementById('customLocation').value = '';
     }
 
-    function handleLocationChange(select) {
-        const customInput = document.getElementById('customLocation');
-        if (select.value === 'NEW_LOCATION') {
-            customInput.style.display = 'block';
-            customInput.focus();
-            customInput.required = true;
-        } else {
-            customInput.style.display = 'none';
-            customInput.required = false;
-        }
-    }
-
-    async function saveItem(e) {
-        e.preventDefault();
-        const title = document.getElementById('title').value;
-        const category = document.getElementById('category').value;
-        
-        let location = document.getElementById('locationSelect').value;
-        if (location === 'NEW_LOCATION') {
-            location = document.getElementById('customLocation').value.trim();
-        }
-
-        const quantity = document.getElementById('quantity').value;
-        const comment = document.getElementById('comment').value;
-        const photoInput = document.getElementById('photo');
-
-        let photoData = '';
-        if (photoInput.files[0]) {
-            photoData = await toBase64(photoInput.files[0]);
-        }
-
-        const items = getItems();
-        items.push({
-            id: Date.now(),
-            title, category, location, quantity, comment, photo: photoData
-        });
-
-        localStorage.setItem('workshop_local_db', JSON.stringify(items));
-        document.getElementById('itemForm').reset();
-        toggleForm();
-        renderItems();
-    }
-
-    function deleteItem(id) {
-        if (!confirm('Удалить эту позицию?')) return;
-        let items = getItems();
-        items = items.filter(item => item.id !== id);
-        localStorage.setItem('workshop_local_db', JSON.stringify(items));
-        renderItems();
-        updateLocationsDropdown();
-    }
-
-    function exportDB() {
-        const data = localStorage.getItem('workshop_local_db') || '[]';
-        const blob = new Blob([data], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'workshop_backup.json';
-        a.click();
-    }
-
-    function importDB(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            try {
-                JSON.parse(event.target.result);
-                localStorage.setItem('workshop_local_db', event.target.result);
-                renderItems();
-                updateLocationsDropdown();
-                alert('База данных успешно импортирована!');
-            } catch (err) {
-                alert('Ошибка: поврежденный файл бэкапа.');
-            }
-        };
-        reader.readAsText(file);
-    }
-
-    function toBase64(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = error => reject(error);
-        });
-    }
-
-    function renderItems() {
-        const searchQuery = document.getElementById('searchInput').value.toLowerCase();
-        const items = getItems();
-        const container = document.getElementById('itemsList');
-        
-        const filtered = items.filter(item => {
-            return (item.title || '').toLowerCase().includes(searchQuery) ||
-                   (item.location || '').toLowerCase().includes(searchQuery) ||
-                   (item.category || '').toLowerCase().includes(searchQuery);
-        });
-
-        if (filtered.length === 0) {
-            container.innerHTML = '<div class="empty">📭 Ничего не найдено. Добавьте первый инструмент.</div>';
-            return;
-        }
-
-        container.innerHTML = filtered.map(item => `
-            <div class="card">
-                ${item.photo ? `<img src="${item.photo}" alt="${item.title}">` : ''}
-                <div class="card-body">
-                    <div>
-                        <span class="badge">${item.category}</span>
-                        <div class="card-title">${item.title}</div>
-                        <div class="card-info">📍 <b>Место:</b> ${item.location || 'Не указано'}</div>
-                        <div class="card-info">📦 <b>Кол-во:</b> ${item.quantity || 'Не указано'}</div>
-                        ${item.comment ? `<div class="card-info">📝 <b>Примечание:</b> ${item.comment}</div>` : ''}
-                    </div>
-                    <button class="btn btn-danger" onclick="deleteItem(${item.id})">🗑 Удалить</button>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    renderItems();
-    updateLocationsDropdown();
-</script>
-
-</body>
-</html>
+    function renderLocationsManagerList() {
+        const container = document.getElementById('locationsListContainer');
