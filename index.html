@@ -134,7 +134,7 @@
         <input type="file" id="importFile" accept=".json" onchange="importDB(event)">
     </div>
 
-    <!-- Панель управления местами хранения -->
+    <!-- Панель управления местами -->
     <div id="locationsPanel" class="modal-panel">
         <h3 style="margin-top: 0; color: #0f172a;">Управление местами хранения</h3>
         <div class="form-group">
@@ -248,3 +248,184 @@
 
     function renderLocationsManagerList() {
         const container = document.getElementById('locationsListContainer');
+        const locations = getLocations();
+
+        if (locations.length === 0) {
+            container.innerHTML = '<div style="color: #64748b; text-align: center; padding: 10px;">Нет сохраненных мест</div>';
+            return;
+        }
+
+        container.innerHTML = locations.map((loc, index) => `
+            <div class="location-item">
+                <span>📍 ${loc}</span>
+                <button class="btn btn-danger" style="padding: 4px 10px; font-size: 13px; margin: 0;" onclick="deleteLocation(${index})">Удалить</button>
+            </div>
+        `).join('');
+    }
+
+    function addNewLocation() {
+        const input = document.getElementById('newLocationName');
+        const val = input.value.trim();
+        if (!val) return;
+
+        const locations = getLocations();
+        if (!locations.includes(val)) {
+            locations.push(val);
+            saveLocations(locations);
+            input.value = '';
+            renderLocationsManagerList();
+        } else {
+            alert('Такое место уже есть в списке.');
+        }
+    }
+
+    function deleteLocation(index) {
+        const locations = getLocations();
+        locations.splice(index, 1);
+        saveLocations(locations);
+        renderLocationsManagerList();
+    }
+
+    function handleLocationChange(select) {
+        const customInput = document.getElementById('customLocation');
+        if (select.value === 'NEW_LOCATION') {
+            customInput.style.display = 'block';
+            customInput.focus();
+            customInput.required = true;
+        } else {
+            customInput.style.display = 'none';
+            customInput.required = false;
+        }
+    }
+
+    async function saveItem(e) {
+        e.preventDefault();
+        const title = document.getElementById('title').value;
+        const category = document.getElementById('category').value;
+        
+        let location = document.getElementById('locationSelect').value;
+        if (location === 'NEW_LOCATION') {
+            location = document.getElementById('customLocation').value.trim();
+            if (location) {
+                const locations = getLocations();
+                if (!locations.includes(location)) {
+                    locations.push(location);
+                    saveLocations(locations);
+                }
+            }
+        }
+
+        const quantity = document.getElementById('quantity').value;
+        const comment = document.getElementById('comment').value;
+        const photoInput = document.getElementById('photo');
+
+        let photoData = '';
+        if (photoInput.files[0]) {
+            photoData = await toBase64(photoInput.files[0]);
+        }
+
+        const items = getItems();
+        items.push({
+            id: Date.now(),
+            title, category, location, quantity, comment, photo: photoData
+        });
+
+        localStorage.setItem('workshop_local_db', JSON.stringify(items));
+        document.getElementById('itemForm').reset();
+        toggleForm();
+        renderItems();
+    }
+
+    function deleteItem(id) {
+        if (!confirm('Удалить эту позицию?')) return;
+        let items = getItems();
+        items = items.filter(item => item.id !== id);
+        localStorage.setItem('workshop_local_db', JSON.stringify(items));
+        renderItems();
+    }
+
+    function exportDB() {
+        const dbData = localStorage.getItem('workshop_local_db') || '[]';
+        const locData = localStorage.getItem('workshop_custom_locations') || '';
+        const exportObj = { db: JSON.parse(dbData), locations: locData ? JSON.parse(locData) : [] };
+        
+        const blob = new Blob([JSON.stringify(exportObj)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'workshop_backup.json';
+        a.click();
+    }
+
+    function importDB(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            try {
+                const parsed = JSON.parse(event.target.result);
+                if (parsed.db) {
+                    localStorage.setItem('workshop_local_db', JSON.stringify(parsed.db));
+                    if (parsed.locations) {
+                        localStorage.setItem('workshop_custom_locations', JSON.stringify(parsed.locations));
+                    }
+                } else {
+                    localStorage.setItem('workshop_local_db', event.target.result);
+                }
+                renderItems();
+                alert('База данных успешно импортирована!');
+            } catch (err) {
+                alert('Ошибка: поврежденный файл бэкапа.');
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    function toBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
+    }
+
+    function renderItems() {
+        const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+        const items = getItems();
+        const container = document.getElementById('itemsList');
+        
+        const filtered = items.filter(item => {
+            return (item.title || '').toLowerCase().includes(searchQuery) ||
+                   (item.location || '').toLowerCase().includes(searchQuery) ||
+                   (item.category || '').toLowerCase().includes(searchQuery);
+        });
+
+        if (filtered.length === 0) {
+            container.innerHTML = '<div class="empty">📭 Ничего не найдено. Добавьте первый инструмент.</div>';
+            return;
+        }
+
+        container.innerHTML = filtered.map(item => `
+            <div class="card">
+                ${item.photo ? `<img src="${item.photo}" alt="${item.title}">` : ''}
+                <div class="card-body">
+                    <div>
+                        <span class="badge">${item.category}</span>
+                        <div class="card-title">${item.title}</div>
+                        <div class="card-info">📍 <b>Место:</b> ${item.location || 'Не указано'}</div>
+                        <div class="card-info">📦 <b>Кол-во:</b> ${item.quantity || 'Не указано'}</div>
+                        ${item.comment ? `<div class="card-info">📝 <b>Примечание:</b> ${item.comment}</div>` : ''}
+                    </div>
+                    <button class="btn btn-danger" onclick="deleteItem(${item.id})">🗑 Удалить</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    renderItems();
+    updateLocationsDropdown();
+</script>
+
+</body>
+</html>
