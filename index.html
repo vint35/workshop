@@ -24,20 +24,28 @@
         }
         .container { max-width: 700px; margin: 0 auto; }
         h1 { text-align: center; color: #0f172a; margin-bottom: 20px; font-size: 24px; }
-        .actions-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+        
+        .actions-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
         .btn {
             background: var(--primary);
             color: white;
             border: none;
             padding: 12px 20px;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 15px;
             cursor: pointer;
             font-weight: bold;
             flex: 1;
             text-align: center;
         }
         .btn:hover { background: var(--primary-hover); }
+        .btn-secondary { background: #475569; }
+        .btn-secondary:hover { background: #334155; }
         .btn-danger { background: var(--danger); padding: 6px 12px; font-size: 14px; margin-top: 10px; flex: none; }
         
         .search-box {
@@ -98,16 +106,20 @@
             margin-bottom: 8px;
         }
         .card-info { font-size: 14px; color: #475569; margin-bottom: 4px; }
-        .empty, .loading { text-align: center; color: #64748b; padding: 40px; background: white; border-radius: 12px; grid-column: 1 / -1; }
+        .empty { text-align: center; color: #64748b; padding: 40px; background: white; border-radius: 12px; grid-column: 1 / -1; }
+        #importFile { display: none; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🧰 Инструмент и Мастерская</h1>
+    <h1>🧰 Учет Инструмента</h1>
     
     <div class="actions-bar">
         <button class="btn" onclick="toggleForm()">➕ Добавить позицию</button>
+        <button class="btn btn-secondary" onclick="exportDB()">💾 Скачать базу</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">📂 Загрузить базу</button>
+        <input type="file" id="importFile" accept=".json" onchange="importDB(event)">
     </div>
 
     <input type="text" id="searchInput" class="search-box" placeholder="🔍 Быстрый поиск по названию или месту..." oninput="renderItems()">
@@ -143,31 +155,19 @@
             <label>Примечания:</label>
             <textarea id="comment" placeholder="Артикул, параметры..."></textarea>
         </div>
-        <button type="submit" class="btn" style="width: 100%;">Сохранить в базу</button>
+        <button type="submit" class="btn" style="width: 100%;">Сохранить</button>
     </form>
 
-    <div id="itemsList" class="grid">
-        <div class="loading">⏳ Загрузка базы с сервера...</div>
-    </div>
+    <div id="itemsList" class="grid"></div>
 </div>
 
 <script>
-    // АДРЕС ВАШЕГО СЕРВЕРА НА PYTHONANYWHERE
-    const API_URL = 'https://vint41.pythonanywhere.com/tools';
-    let allItems = [];
-
     function toggleForm() {
         document.getElementById('itemForm').classList.toggle('active');
     }
 
-    async function fetchItems() {
-        try {
-            const response = await fetch(API_URL);
-            allItems = await response.json();
-            renderItems();
-        } catch (e) {
-            document.getElementById('itemsList').innerHTML = '<div class="empty">❌ Ошибка соединения с сервером базы данных.</div>';
-        }
+    function getItems() {
+        return JSON.parse(localStorage.getItem('workshop_local_db') || '[]');
     }
 
     async function saveItem(e) {
@@ -184,23 +184,51 @@
             photoData = await toBase64(photoInput.files[0]);
         }
 
-        const newItem = { title, category, location, quantity, comment, photo: photoData };
-
-        await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newItem)
+        const items = getItems();
+        items.push({
+            id: Date.now(),
+            title, category, location, quantity, comment, photo: photoData
         });
 
+        localStorage.setItem('workshop_local_db', JSON.stringify(items));
         document.getElementById('itemForm').reset();
         toggleForm();
-        fetchItems();
+        renderItems();
     }
 
-    async function deleteItem(id) {
+    function deleteItem(id) {
         if (!confirm('Удалить эту позицию?')) return;
-        await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
-        fetchItems();
+        let items = getItems();
+        items = items.filter(item => item.id !== id);
+        localStorage.setItem('workshop_local_db', JSON.stringify(items));
+        renderItems();
+    }
+
+    function exportDB() {
+        const data = localStorage.getItem('workshop_local_db') || '[]';
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'workshop_backup.json';
+        a.click();
+    }
+
+    function importDB(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            try {
+                JSON.parse(event.target.result); // Проверка валидности JSON
+                localStorage.setItem('workshop_local_db', event.target.result);
+                renderItems();
+                alert('База данных успешно импортирована!');
+            } catch (err) {
+                alert('Ошибка: поврежденный файл бэкапа.');
+            }
+        };
+        reader.readAsText(file);
     }
 
     function toBase64(file) {
@@ -214,16 +242,17 @@
 
     function renderItems() {
         const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+        const items = getItems();
         const container = document.getElementById('itemsList');
         
-        const filtered = allItems.filter(item => {
+        const filtered = items.filter(item => {
             return (item.title || '').toLowerCase().includes(searchQuery) ||
                    (item.location || '').toLowerCase().includes(searchQuery) ||
                    (item.category || '').toLowerCase().includes(searchQuery);
         });
 
         if (filtered.length === 0) {
-            container.innerHTML = '<div class="empty">📭 Ничего не найдено.</div>';
+            container.innerHTML = '<div class="empty">📭 Ничего не найдено. Добавьте первый инструмент.</div>';
             return;
         }
 
@@ -244,8 +273,7 @@
         `).join('');
     }
 
-    // Загружаем данные при открытии страницы
-    fetchItems();
+    renderItems();
 </script>
 
 </body>
