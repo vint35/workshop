@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Учет Инструмента и Мастерская</title>
+    <style>
+        :root {
+            --primary: #d97706;
+            --primary-hover: #b45309;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --danger: #ef4444;
+            --badge-bg: #fef3c7;
+            --badge-text: #92400e;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 15px;
+        }
+        .container { max-width: 700px; margin: 0 auto; }
+        h1 { text-align: center; color: #0f172a; margin-bottom: 20px; font-size: 24px; }
+        .actions-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            flex: 1;
+            text-align: center;
+        }
+        .btn:hover { background: var(--primary-hover); }
+        .btn-danger { background: var(--danger); padding: 6px 12px; font-size: 14px; margin-top: 10px; flex: none; }
+        
+        .search-box {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+            margin-bottom: 20px;
+            background: white;
+        }
+
+        form {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+            display: none;
+        }
+        form.active { display: block; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 15px;
+            background: white;
+        }
+        
+        .grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
+        @media(min-width: 500px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+        
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border-left: 5px solid var(--primary);
+        }
+        .card img { width: 100%; height: 160px; object-fit: cover; background: #e2e8f0; }
+        .card-body { padding: 15px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; }
+        .card-title { font-size: 17px; font-weight: bold; color: #0f172a; margin-bottom: 6px; }
+        .badge {
+            display: inline-block;
+            background: var(--badge-bg);
+            color: var(--badge-text);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .card-info { font-size: 14px; color: #475569; margin-bottom: 4px; }
+        .empty, .loading { text-align: center; color: #64748b; padding: 40px; background: white; border-radius: 12px; grid-column: 1 / -1; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🧰 Инструмент и Мастерская</h1>
+    
+    <div class="actions-bar">
+        <button class="btn" onclick="toggleForm()">➕ Добавить позицию</button>
+    </div>
+
+    <input type="text" id="searchInput" class="search-box" placeholder="🔍 Быстрый поиск по названию или месту..." oninput="renderItems()">
+
+    <form id="itemForm" onsubmit="saveItem(event)">
+        <div class="form-group">
+            <label>Наименование:</label>
+            <input type="text" id="title" required placeholder="Например: Сверло по металлу 6 мм">
+        </div>
+        <div class="form-group">
+            <label>Категория:</label>
+            <select id="category">
+                <option value="Электроинструмент">Электроинструмент</option>
+                <option value="Ручной инструмент">Ручной инструмент</option>
+                <option value="Крепеж и метизы">Крепеж и метизы</option>
+                <option value="Электрика и расходники">Электрика и расходники</option>
+                <option value="Разное / Мелочи">Разное / Мелочи</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Место хранения:</label>
+            <input type="text" id="location" placeholder="Например: Стеллаж №2, полка 3">
+        </div>
+        <div class="form-group">
+            <label>Количество / Остаток:</label>
+            <input type="text" id="quantity" placeholder="Например: 2 шт / ~50 шт">
+        </div>
+        <div class="form-group">
+            <label>Фотография:</label>
+            <input type="file" id="photo" accept="image/*">
+        </div>
+        <div class="form-group">
+            <label>Примечания:</label>
+            <textarea id="comment" placeholder="Артикул, параметры..."></textarea>
+        </div>
+        <button type="submit" class="btn" style="width: 100%;">Сохранить в базу</button>
+    </form>
+
+    <div id="itemsList" class="grid">
+        <div class="loading">⏳ Загрузка базы с сервера...</div>
+    </div>
+</div>
+
+<script>
+    // АДРЕС ВАШЕГО СЕРВЕРА НА PYTHONANYWHERE
+    const API_URL = 'https://vint41.pythonanywhere.com/tools';
+    let allItems = [];
+
+    function toggleForm() {
+        document.getElementById('itemForm').classList.toggle('active');
+    }
+
+    async function fetchItems() {
+        try {
+            const response = await fetch(API_URL);
+            allItems = await response.json();
+            renderItems();
+        } catch (e) {
+            document.getElementById('itemsList').innerHTML = '<div class="empty">❌ Ошибка соединения с сервером базы данных.</div>';
+        }
+    }
+
+    async function saveItem(e) {
+        e.preventDefault();
+        const title = document.getElementById('title').value;
+        const category = document.getElementById('category').value;
+        const location = document.getElementById('location').value;
+        const quantity = document.getElementById('quantity').value;
+        const comment = document.getElementById('comment').value;
+        const photoInput = document.getElementById('photo');
+
+        let photoData = '';
+        if (photoInput.files[0]) {
+            photoData = await toBase64(photoInput.files[0]);
+        }
+
+        const newItem = { title, category, location, quantity, comment, photo: photoData };
+
+        await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newItem)
+        });
+
+        document.getElementById('itemForm').reset();
+        toggleForm();
+        fetchItems();
+    }
+
+    async function deleteItem(id) {
+        if (!confirm('Удалить эту позицию?')) return;
+        await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+        fetchItems();
+    }
+
+    function toBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
+    }
+
+    function renderItems() {
+        const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+        const container = document.getElementById('itemsList');
+        
+        const filtered = allItems.filter(item => {
+            return (item.title || '').toLowerCase().includes(searchQuery) ||
+                   (item.location || '').toLowerCase().includes(searchQuery) ||
+                   (item.category || '').toLowerCase().includes(searchQuery);
+        });
+
+        if (filtered.length === 0) {
+            container.innerHTML = '<div class="empty">📭 Ничего не найдено.</div>';
+            return;
+        }
+
+        container.innerHTML = filtered.map(item => `
+            <div class="card">
+                ${item.photo ? `<img src="${item.photo}" alt="${item.title}">` : ''}
+                <div class="card-body">
+                    <div>
+                        <span class="badge">${item.category}</span>
+                        <div class="card-title">${item.title}</div>
+                        <div class="card-info">📍 <b>Место:</b> ${item.location || 'Не указано'}</div>
+                        <div class="card-info">📦 <b>Кол-во:</b> ${item.quantity || 'Не указано'}</div>
+                        ${item.comment ? `<div class="card-info">📝 <b>Примечание:</b> ${item.comment}</div>` : ''}
+                    </div>
+                    <button class="btn btn-danger" onclick="deleteItem(${item.id})">🗑 Удалить</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Загружаем данные при открытии страницы
+    fetchItems();
+</script>
+
+</body>
+</html>
